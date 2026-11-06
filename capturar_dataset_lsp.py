@@ -1,9 +1,13 @@
 import os
+import re
 import time
 from typing import Any
 import cv2
 import mediapipe as mp
 import pandas as pd
+
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf")
 
 # Diccionario de clases para Lengua de Señas Peruana (LSP)
 CLASES: dict[int, str] = {
@@ -17,9 +21,11 @@ CLASES: dict[int, str] = {
     7: "ENVIAR"
 }
 
-# Constantes de configuración y captura
-ARCHIVO_SALIDA_CSV = "dataset_lsp.csv"
-INTERVALO_MUESTREO_SEGUNDOS = 0.04  # Aproximadamente 25 cuadros por segundo
+# Constantes de balance y muestreo colaborativo
+LIMITE_MUESTRAS_POR_CLASE = 300
+TOTAL_CLASES = len(CLASES)
+TOTAL_MUESTRAS_OBJETIVO = LIMITE_MUESTRAS_POR_CLASE * TOTAL_CLASES  # 2400 muestras por integrante
+INTERVALO_MUESTREO_SEGUNDOS = 0.04  # ~25 muestras por segundo
 CONFIANZA_MINIMA_DETECCION = 0.7
 CONFIANZA_MINIMA_SEGUIMIENTO = 0.5
 TOTAL_PUNTOS_POR_MANO = 21
@@ -27,8 +33,31 @@ DIMENSIONES_POR_PUNTO = 3
 TOTAL_VALORES_POR_MANO = TOTAL_PUNTOS_POR_MANO * DIMENSIONES_POR_PUNTO  # 63 valores por mano
 
 
+def solicitar_identificador_integrante() -> tuple[str, str]:
+    """Solicita el nombre del integrante y genera la ruta del archivo CSV personalizado."""
+    print("=" * 60)
+    print("SISTEMA DE RECOLECCIÓN COLABORATIVA DE DATASET LSP")
+    print(f"Meta por integrante: {LIMITE_MUESTRAS_POR_CLASE} muestras por clase ({TOTAL_MUESTRAS_OBJETIVO} en total)")
+    print("=" * 60)
+    
+    entrada = input("Ingrese su nombre o alias (ej. alvaro, victor, rai, arturo): ").strip().lower()
+    # Limpieza de caracteres no alfanuméricos para evitar nombres inválidos de archivo
+    nombre_limpio = re.sub(r"[^a-z0-9_]", "", entrada) if entrada else "integrante"
+    ruta_archivo = f"dataset_lsp_{nombre_limpio}.csv"
+
+    # Si existe un dataset genérico previo y el integrante es el titular, permite adoptarlo
+    if not os.path.exists(ruta_archivo) and os.path.exists("dataset_lsp.csv"):
+        try:
+            os.replace("dataset_lsp.csv", ruta_archivo)
+            print(f"Se migró el progreso existente de 'dataset_lsp.csv' a '{ruta_archivo}'.")
+        except Exception:
+            pass
+
+    return nombre_limpio, ruta_archivo
+
+
 def generar_encabezados_csv() -> list[str]:
-    """Genera las columnas para mano izquierda (lh), derecha (rh) y etiquetas."""
+    """Genera las 126 columnas de landmarks junto a las etiquetas de clasificación."""
     ejes = ["x", "y", "z"]
     columnas_izquierda = [
         f"lh_lm_{i}_{eje}" for i in range(TOTAL_PUNTOS_POR_MANO) for eje in ejes
@@ -40,27 +69,34 @@ def generar_encabezados_csv() -> list[str]:
 
 
 def inicializar_archivo_csv(ruta_csv: str, encabezados: list[str]) -> None:
-    """Valida la consistencia del archivo CSV o crea uno nuevo con respaldo seguro."""
-    if os.path.exists(ruta_csv):
-        try:
-            df_existente = pd.read_csv(ruta_csv, nrows=1)
-            if list(df_existente.columns) == encabezados:
-                print(f"Archivo {ruta_csv} cargado correctamente con estructura bimanual.")
-                return
-            # Respaldo automático si la estructura previa era unimanual
-            ruta_respaldo = "dataset_lsp_unimanual_backup.csv"
-            os.replace(ruta_csv, ruta_respaldo)
-            print(f"Esquema anterior incompatible respaldado en: {ruta_respaldo}")
-        except Exception as error:
-            print(f"Advertencia al leer CSV previo: {error}")
+    """Crea el archivo CSV del integrante con sus encabezados si no existe."""
+    if not os.path.exists(ruta_csv):
+        df_nuevo = pd.DataFrame(columns=encabezados)
+        df_nuevo.to_csv(ruta_csv, index=False)
+        print(f"Archivo {ruta_csv} inicializado correctamente.")
 
-    df_nuevo = pd.DataFrame(columns=encabezados)
-    df_nuevo.to_csv(ruta_csv, index=False)
-    print(f"Archivo {ruta_csv} inicializado con {len(encabezados)} columnas.")
+
+def cargar_conteo_existente(ruta_csv: str) -> dict[int, int]:
+    """Calcula cuántas muestras existen ya registradas para cada clase en el CSV."""
+    conteo = {idx: 0 for idx in CLASES.keys()}
+    if not os.path.exists(ruta_csv):
+        return conteo
+
+    try:
+        df = pd.read_csv(ruta_csv)
+        if "label" in df.columns:
+            conteos_series = df["label"].value_counts()
+            for idx in conteo.keys():
+                if idx in conteos_series.index:
+                    conteo[idx] = int(conteos_series[idx])
+    except Exception as error:
+        print(f"Advertencia al leer progreso previo: {error}")
+
+    return conteo
 
 
 def normalizar_puntos_mano(puntos_mano: Any) -> list[float]:
-    """Normaliza los 21 puntos respecto a la muñeca y escala invariantemente."""
+    """Normaliza las coordenadas relativas a la muñeca y escala invariantemente."""
     punto_base = puntos_mano.landmark[0]
     base_x, base_y, base_z = punto_base.x, punto_base.y, punto_base.z
 
@@ -77,7 +113,7 @@ def normalizar_puntos_mano(puntos_mano: Any) -> list[float]:
 
 
 def extraer_vectores_manos(resultados: Any) -> tuple[list[float], list[float], bool, bool]:
-    """Extrae y asigna las coordenadas normalizadas a mano izquierda y derecha."""
+    """Separa y normaliza las coordenadas correspondientes a cada mano."""
     vector_izq = [0.0] * TOTAL_VALORES_POR_MANO
     vector_der = [0.0] * TOTAL_VALORES_POR_MANO
     detectada_izq = False
@@ -90,7 +126,6 @@ def extraer_vectores_manos(resultados: Any) -> tuple[list[float], list[float], b
         etiqueta_lateralidad = clasificacion.classification[0].label  # 'Left' o 'Right'
         vector_normalizado = normalizar_puntos_mano(puntos)
 
-        # Asignación con control defensivo por si ambas manos reciben la misma etiqueta
         if etiqueta_lateralidad == "Left":
             if not detectada_izq:
                 vector_izq = vector_normalizado
@@ -109,38 +144,74 @@ def extraer_vectores_manos(resultados: Any) -> tuple[list[float], list[float], b
     return vector_izq, vector_der, detectada_izq, detectada_der
 
 
+def buscar_siguiente_clase_pendiente(conteo_por_clase: dict[int, int], clase_actual: int) -> int | None:
+    """Encuentra la siguiente clase que aún tenga menos de 300 muestras."""
+    for paso in range(1, TOTAL_CLASES + 1):
+        candidata = (clase_actual + paso) % TOTAL_CLASES
+        if conteo_por_clase[candidata] < LIMITE_MUESTRAS_POR_CLASE:
+            return candidata
+    return None
+
+
 def dibujar_interfaz(
     fotograma: Any,
+    nombre_integrante: str,
     indice_clase: int,
+    conteo_por_clase: dict[int, int],
     esta_grabando: bool,
-    muestras_capturadas: int,
     mano_izq: bool,
     mano_der: bool
 ) -> None:
-    """Muestra el panel HUD en pantalla con la información de captura y estado."""
-    cv2.rectangle(fotograma, (10, 10), (420, 155), (20, 20, 20), -1)
-    
-    estado_texto = "GRABANDO..." if esta_grabando else "PAUSADO"
-    color_estado = (0, 255, 0) if esta_grabando else (0, 0, 255)
+    """Dibuja el panel HUD con métricas de progreso de clase y total."""
+    muestras_clase = conteo_por_clase[indice_clase]
+    total_muestras = sum(conteo_por_clase.values())
+    porcentaje_total = (total_muestras / TOTAL_MUESTRAS_OBJETIVO) * 100
 
-    cv2.putText(fotograma, f"Clase [{indice_clase}]: {CLASES[indice_clase]}", (20, 40),
+    cv2.rectangle(fotograma, (10, 10), (470, 195), (20, 20, 20), -1)
+
+    # Estado de la grabación
+    if muestras_clase >= LIMITE_MUESTRAS_POR_CLASE:
+        estado_texto = "¡CLASE COMPLETADA (300/300)!"
+        color_estado = (0, 215, 255)  # Dorado / Amarillo
+    elif esta_grabando:
+        estado_texto = "GRABANDO..."
+        color_estado = (0, 255, 0)    # Verde
+    else:
+        estado_texto = "PAUSADO"
+        color_estado = (0, 0, 255)    # Rojo
+
+    cv2.putText(fotograma, f"Integrante: {nombre_integrante.upper()}", (20, 35),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.70, (200, 200, 200), 2)
+    cv2.putText(fotograma, f"Clase [{indice_clase}]: {CLASES[indice_clase]} ({muestras_clase}/{LIMITE_MUESTRAS_POR_CLASE})", (20, 70),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
-    cv2.putText(fotograma, f"Estado: {estado_texto}", (20, 75),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.75, color_estado, 2)
-    cv2.putText(fotograma, f"Muestras sesion: {muestras_capturadas}", (20, 110),
+    cv2.putText(fotograma, f"Progreso total: {total_muestras}/{TOTAL_MUESTRAS_OBJETIVO} ({porcentaje_total:.1f}%)", (20, 105),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.70, (255, 255, 0), 2)
+    cv2.putText(fotograma, f"Estado: {estado_texto}", (20, 140),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.75, color_estado, 2)
 
-    color_izq = (0, 255, 0) if mano_izq else (120, 120, 120)
-    color_der = (0, 255, 0) if mano_der else (120, 120, 120)
     texto_manos = f"Izq: {'SI' if mano_izq else 'NO'} | Der: {'SI' if mano_der else 'NO'}"
-    cv2.putText(fotograma, texto_manos, (20, 142),
+    cv2.putText(fotograma, texto_manos, (20, 175),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 200, 255), 2)
+
+    # Notificación central si el integrante completó el dataset total
+    if total_muestras >= TOTAL_MUESTRAS_OBJETIVO:
+        cv2.rectangle(fotograma, (40, 220), (600, 270), (0, 150, 0), -1)
+        cv2.putText(fotograma, "¡META COMPLETA! LISTO PARA ENVIAR", (50, 255),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
 
 
 def main() -> None:
-    """Flujo principal de captura de video y registro de datos bimanuales."""
+    """Controla el flujo de captura con límite por clase y gestión colaborativa."""
+    nombre_integrante, ruta_csv = solicitar_identificador_integrante()
     encabezados = generar_encabezados_csv()
-    inicializar_archivo_csv(ARCHIVO_SALIDA_CSV, encabezados)
+    inicializar_archivo_csv(ruta_csv, encabezados)
+    conteo_por_clase = cargar_conteo_existente(ruta_csv)
+
+    # Selecciona la primera clase que aún esté incompleta
+    indice_clase_actual = 0
+    if conteo_por_clase[0] >= LIMITE_MUESTRAS_POR_CLASE:
+        pendiente = buscar_siguiente_clase_pendiente(conteo_por_clase, 0)
+        indice_clase_actual = pendiente if pendiente is not None else 0
 
     detector_manos = mp.solutions.hands.Hands(
         static_image_mode=False,
@@ -151,16 +222,12 @@ def main() -> None:
     utilidad_dibujo = mp.solutions.drawing_utils
 
     captura = cv2.VideoCapture(0)
-    indice_clase_actual = 0
     esta_grabando = False
-    muestras_capturadas = 0
 
-    print("=" * 60)
-    print("CAPTURA DE DATASET LSP - MODO BIMANUAL (126 CARACTERÍSTICAS)")
-    print("Controles:")
+    print("\nControles:")
     print("  - Teclas [0 - 7] : Cambiar clase a registrar.")
     print("  - Barra Espacio  : Iniciar / Pausar grabación.")
-    print("  - Tecla [Q]      : Salir y guardar.")
+    print("  - Tecla [Q]      : Salir y guardar progreso.")
     print("=" * 60)
 
     try:
@@ -173,7 +240,6 @@ def main() -> None:
             fotograma_rgb = cv2.cvtColor(fotograma, cv2.COLOR_BGR2RGB)
             resultados = detector_manos.process(fotograma_rgb)
 
-            # Dibujar los puntos esqueléticos de las manos detectadas
             if resultados.multi_hand_landmarks:
                 for marcas_mano in resultados.multi_hand_landmarks:
                     utilidad_dibujo.draw_landmarks(
@@ -182,35 +248,54 @@ def main() -> None:
 
             vec_izq, vec_der, detectada_izq, detectada_der = extraer_vectores_manos(resultados)
 
-            # Guardado si la grabación está activa y al menos una mano está visible
+            # Lógica de grabación con límite estricto de 300 muestras
             if esta_grabando and (detectada_izq or detectada_der):
-                vector_completo = vec_izq + vec_der + [indice_clase_actual, CLASES[indice_clase_actual]]
-                pd.DataFrame([vector_completo]).to_csv(
-                    ARCHIVO_SALIDA_CSV, mode="a", header=False, index=False
-                )
-                muestras_capturadas += 1
-                time.sleep(INTERVALO_MUESTREO_SEGUNDOS)
+                if conteo_por_clase[indice_clase_actual] < LIMITE_MUESTRAS_POR_CLASE:
+                    vector_completo = vec_izq + vec_der + [indice_clase_actual, CLASES[indice_clase_actual]]
+                    pd.DataFrame([vector_completo]).to_csv(
+                        ruta_csv, mode="a", header=False, index=False
+                    )
+                    conteo_por_clase[indice_clase_actual] += 1
+                    time.sleep(INTERVALO_MUESTREO_SEGUNDOS)
+
+                    # Si alcanza exactamente el límite, pausa y busca la siguiente clase
+                    if conteo_por_clase[indice_clase_actual] >= LIMITE_MUESTRAS_POR_CLASE:
+                        esta_grabando = False
+                        print(f"\n¡Clase [{indice_clase_actual}] ({CLASES[indice_clase_actual]}) completada (300/300)!")
+                        siguiente = buscar_siguiente_clase_pendiente(conteo_por_clase, indice_clase_actual)
+                        if siguiente is not None:
+                            indice_clase_actual = siguiente
+                            print(f"Avanzando a la clase pendiente [{indice_clase_actual}]: {CLASES[indice_clase_actual]}")
+                        else:
+                            print("¡FELICITACIONES! Has completado las 8 clases (2400 muestras en total).")
+                else:
+                    esta_grabando = False
 
             dibujar_interfaz(
                 fotograma,
+                nombre_integrante,
                 indice_clase_actual,
+                conteo_por_clase,
                 esta_grabando,
-                muestras_capturadas,
                 detectada_izq,
                 detectada_der
             )
 
-            cv2.imshow("Captura de Dataset LSP (Bimanual)", fotograma)
+            cv2.imshow(f"Captura LSP - {nombre_integrante.upper()}", fotograma)
             tecla = cv2.waitKey(1) & 0xFF
 
             if tecla == ord("q"):
                 break
             elif tecla == 32:  # Barra espaciadora
-                esta_grabando = not esta_grabando
+                if conteo_por_clase[indice_clase_actual] < LIMITE_MUESTRAS_POR_CLASE:
+                    esta_grabando = not esta_grabando
+                else:
+                    print(f"La clase [{indice_clase_actual}] ya tiene 300 muestras. Selecciona otra clase.")
             elif ord("0") <= tecla <= ord("7"):
-                indice_clase_actual = tecla - ord("0")
+                nueva_clase = tecla - ord("0")
+                indice_clase_actual = nueva_clase
                 esta_grabando = False
-                print(f"Seleccionada clase {indice_clase_actual}: {CLASES[indice_clase_actual]}")
+                print(f"Seleccionada clase {indice_clase_actual}: {CLASES[indice_clase_actual]} ({conteo_por_clase[indice_clase_actual]}/{LIMITE_MUESTRAS_POR_CLASE})")
 
     finally:
         captura.release()
