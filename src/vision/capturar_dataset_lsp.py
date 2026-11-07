@@ -43,7 +43,11 @@ def solicitar_identificador_integrante() -> tuple[str, str]:
     entrada = input("Ingrese su nombre o alias (ej. alvaro, victor, rai, arturo): ").strip().lower()
     # Limpieza de caracteres no alfanuméricos para evitar nombres inválidos de archivo
     nombre_limpio = re.sub(r"[^a-z0-9_]", "", entrada) if entrada else "integrante"
-    ruta_archivo = f"dataset_lsp_{nombre_limpio}.csv"
+    
+    directorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    carpeta_destino = os.path.join(directorio_raiz, "data", "raw")
+    os.makedirs(carpeta_destino, exist_ok=True)
+    ruta_archivo = os.path.join(carpeta_destino, f"dataset_lsp_{nombre_limpio}.csv")
 
     # Si existe un dataset genérico previo y el integrante es el titular, permite adoptarlo
     if not os.path.exists(ruta_archivo) and os.path.exists("dataset_lsp.csv"):

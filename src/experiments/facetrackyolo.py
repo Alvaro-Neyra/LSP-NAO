@@ -10,9 +10,12 @@ import os
 IP   = "10.36.30.90"
 PORT = 9559
 
-CFG   = r"D:\yolov3-tiny.cfg"
-WEI   = r"D:\yolov3-tiny.weights"
-NAMES = r"D:\coco.names"
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+YOLO_DIR     = os.path.join(PROJECT_ROOT, "models", "yolov3-tiny")
+
+CFG   = os.path.join(YOLO_DIR, "yolov3-tiny.cfg")
+WEI   = os.path.join(YOLO_DIR, "yolov3-tiny.weights")
+NAMES = os.path.join(YOLO_DIR, "coco.names")
 
 NMS_THRESH  = 0.4
 CONF_THRESH = 0.5

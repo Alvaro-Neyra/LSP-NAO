@@ -4,8 +4,12 @@ import re
 import pandas as pd
 
 # Constantes de configuración para la unificación
-PATRON_BUSQUEDA_CSV = "dataset_lsp_*.csv"
-ARCHIVO_SALIDA_CONSOLIDADO = "dataset_lsp_consolidado.csv"
+DIRECTORIO_RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+DIRECTORIO_DATOS_RAW = os.path.join(DIRECTORIO_RAIZ, "data", "raw")
+DIRECTORIO_DATOS_PROCESSED = os.path.join(DIRECTORIO_RAIZ, "data", "processed")
+
+PATRON_BUSQUEDA_CSV = os.path.join(DIRECTORIO_DATOS_RAW, "dataset_lsp_*.csv")
+ARCHIVO_SALIDA_CONSOLIDADO = os.path.join(DIRECTORIO_DATOS_PROCESSED, "dataset_lsp_consolidado.csv")
 PATRONES_EXCLUIDOS: list[str] = ["backup", "consolidado", "unimanual"]
 COLUMNA_METADATO_INTEGRANTE = "integrante"
 TOTAL_COLUMNAS_BASE_ESPERADAS = 128  # 126 coordenadas + label + class_name
