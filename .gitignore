@@ -13,6 +13,22 @@ ENV/
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+
+# ==============================================================================
+# Herramientas y arneses de asistentes / agentes de IA
+# ==============================================================================
+.agents/
+.agent/
+_agents/
+_agent/
+.opencode/
+.cursor/
+.claude/
+.gemini/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
 
 # ==============================================================================
 # Archivos autogenerados y respaldos del proyecto
@@ -23,12 +39,9 @@ _yolov3_tiny_clean.cfg
 *.tmp
 
 # ==============================================================================
-# Modelos entrenados y pesos pesados de Deep Learning / Machine Learning
-# (Evitar saturar el historial de Git con archivos binarios de decenas de MB)
+# Modelos pesados y binarios de IA (se distribuyen fuera de git o por release)
 # ==============================================================================
 *.weights
-*.joblib
-*.pkl
 *.h5
 *.onnx
 *.pt
@@ -43,10 +56,9 @@ _yolov3_tiny_clean.cfg
 *.mkv
 
 # ==============================================================================
-# Logs y métricas temporales
+# Logs y temporales
 # ==============================================================================
 *.log
-.pytest_cache/
 
 # ==============================================================================
 # Editores y entornos de desarrollo (IDE)

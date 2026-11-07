@@ -13,3 +13,6 @@ joblib>=1.3.0
 # Visualización y Métricas para el Informe Técnico
 matplotlib>=3.7.0
 seaborn>=0.12.0
+
+# Pruebas Automatizadas y Calidad de Software
+pytest>=7.4.0
