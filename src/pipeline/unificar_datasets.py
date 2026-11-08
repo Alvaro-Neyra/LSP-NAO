@@ -52,7 +52,7 @@ def procesar_archivo_individual(ruta_archivo: str, nombre_integrante: str) -> pd
             print(f"Advertencia: '{ruta_archivo}' contiene {nulos_totales} valores nulos. Limpiando filas...")
             df = df.dropna()
 
-        # Añadir columna con el nombre del integrante como metadato
+        # Anadir columna con el nombre del integrante como metadato
         df[COLUMNA_METADATO_INTEGRANTE] = nombre_integrante
         print(f"Procesado: {ruta_archivo} -> {len(df)} muestras cargadas (Integrante: {nombre_integrante}).")
         return df
@@ -75,7 +75,7 @@ def mostrar_resumen_estadistico(df_consolidado: pd.DataFrame) -> None:
         porcentaje = (cantidad / total_muestras) * 100
         print(f"  - {integrante:<15}: {cantidad:>5} muestras ({porcentaje:.1f}%)")
 
-    print("\nDistribución por Clase (Lengua de Señas Peruana):")
+    print("\nDistribución por Clase (Lengua de Senas Peruana):")
     conteo_clases = df_consolidado.groupby(["label", "class_name"]).size()
     for (etiqueta, nombre_clase), cantidad in conteo_clases.items():
         porcentaje = (cantidad / total_muestras) * 100

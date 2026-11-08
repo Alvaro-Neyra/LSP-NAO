@@ -25,7 +25,7 @@ def assert_file_ok(path, min_bytes, allow_html=False):
         raise IOError("No se encontró el archivo: %s" % path)
     size = os.path.getsize(path)
     if size < min_bytes:
-        raise IOError("Archivo muy pequeño o corrupto: %s (%d bytes)" % (path, size))
+        raise IOError("Archivo muy pequeno o corrupto: %s (%d bytes)" % (path, size))
     # detectar HTML por descarga equivocada
     with open(path, "rb") as f:
         head = f.read(200)

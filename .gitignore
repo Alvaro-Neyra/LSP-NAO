@@ -74,3 +74,7 @@ _yolov3_tiny_clean.cfg
 Thumbs.db
 desktop.ini
 .DS_Store
+
+
+# Evidencias fotograficas de pruebas en vivo
+reports/evidencias/

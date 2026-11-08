@@ -1,6 +1,6 @@
 """Módulo de entrenamiento, evaluación comparativa y serialización de modelos de Machine Learning
 
-para el reconocimiento de Lengua de Señas Peruana (LSP) aplicado a robótica con el Robot NAO.
+para el reconocimiento de Lengua de Senas Peruana (LSP) aplicado a robótica con el Robot NAO.
 """
 
 from dataclasses import dataclass
@@ -57,7 +57,7 @@ class ResultadoEvaluacion:
 
 
 def cargar_y_validar_dataset(ruta_csv: str) -> tuple[np.ndarray, np.ndarray, list[str], list[str]]:
-    """Carga el dataset consolidado, valida integridad y extrae matrices de diseño."""
+    """Carga el dataset consolidado, valida integridad y extrae matrices de diseno."""
     if not os.path.exists(ruta_csv):
         raise FileNotFoundError(f"No se encontró el archivo del dataset consolidado: '{ruta_csv}'")
 
@@ -161,7 +161,7 @@ def medir_latencia_promedio_ms(modelo: Any, x_prueba: np.ndarray, repeticiones: 
 
 
 def estimar_tamano_modelo_mb(modelo: Any) -> float:
-    """Calcula el tamaño serializado del modelo en memoria para evaluar huella en el robot NAO."""
+    """Calcula el tamano serializado del modelo en memoria para evaluar huella en el robot NAO."""
     buffer = io.BytesIO()
     joblib.dump(modelo, buffer)
     tamano_bytes = buffer.getbuffer().nbytes
@@ -211,7 +211,7 @@ def entrenar_y_evaluar_modelo(
     tamano_mb = estimar_tamano_modelo_mb(estimador)
 
     print(f"Exactitud (Accuracy): {exactitud * 100:.2f}% | F1-Macro: {f1_macro * 100:.2f}%")
-    print(f"Latencia de inferencia: {latencia_ms:.3f} ms/muestra | Tamaño: {tamano_mb:.2f} MB")
+    print(f"Latencia de inferencia: {latencia_ms:.3f} ms/muestra | Tamano: {tamano_mb:.2f} MB")
 
     return ResultadoEvaluacion(
         nombre_modelo=nombre_modelo,
@@ -237,7 +237,7 @@ def generar_archivo_reporte_metricas(
     lineas: list[str] = []
     separador = "=" * 80
     lineas.append(separador)
-    lineas.append("INFORME COMPARATIVO DE RENDIMIENTO DE MODELOS - LENGUA DE SEÑAS PERUANA (LSP)")
+    lineas.append("INFORME COMPARATIVO DE RENDIMIENTO DE MODELOS - LENGUA DE SENAS PERUANA (LSP)")
     lineas.append("Proyecto: Clasificación de Gestos en Tiempo Real para el Robot NAO")
     lineas.append(separador)
 
@@ -335,7 +335,7 @@ def generar_grafica_matrices_confusion(
         eje.tick_params(axis="y", rotation=0)
 
     plt.suptitle(
-        "Matrices de Confusión Normalizadas (%) - Clasificación de Lengua de Señas Peruana (LSP)",
+        "Matrices de Confusión Normalizadas (%) - Clasificación de Lengua de Senas Peruana (LSP)",
         fontsize=14,
         fontweight="bold",
         y=1.02
@@ -351,7 +351,7 @@ def generar_grafica_comparativa_f1(
     nombres_clases: list[str],
     ruta_figura: str
 ) -> None:
-    """Genera una gráfica de barras comparando el desempeño clase por clase entre ambos modelos."""
+    """Genera una gráfica de barras comparando el desempeno clase por clase entre ambos modelos."""
     plt.figure(figsize=(13, 6))
 
     numero_clases = len(nombres_clases)
@@ -390,12 +390,12 @@ def generar_grafica_comparativa_f1(
             )
 
     plt.title(
-        "Comparativa de F1-Score por Clase de Seña (SVM vs Random Forest)",
+        "Comparativa de F1-Score por Clase de Sena (SVM vs Random Forest)",
         fontsize=13,
         fontweight="bold",
         pad=15
     )
-    plt.xlabel("Clases de Señas (LSP)", fontsize=11, fontweight="medium")
+    plt.xlabel("Clases de Senas (LSP)", fontsize=11, fontweight="medium")
     plt.ylabel("F1-Score (%)", fontsize=11, fontweight="medium")
     plt.xticks(indices, nombres_clases, fontsize=10, fontweight="medium")
     plt.ylim(0, 110)

@@ -46,17 +46,31 @@ def ejecutar_pruebas_calidad() -> None:
     ejecutar_comando([sys.executable, "-m", "pytest", "tests"], "Pruebas Automatizadas de Calidad")
 
 
+def iniciar_pruebas_en_vivo() -> None:
+    """Lanza el banco de pruebas de inferencia en tiempo real con captura automatica."""
+    ruta_script = os.path.join("src", "vision", "probar_modelo_en_vivo.py")
+    ejecutar_comando([sys.executable, ruta_script], "Banco de Pruebas e Inferencia en Vivo")
+
+
+def iniciar_traductor_nao() -> None:
+    """Lanza la aplicacion de inferencia y traduccion integrada con el Robot NAO."""
+    ruta_script = os.path.join("src", "robot", "app_inferencia_nao.py")
+    ejecutar_comando([sys.executable, ruta_script], "Traductor LSP con Robot NAO")
+
+
 def mostrar_menu_interactivo() -> None:
     """Despliega un menú en consola para seleccionar la operación deseada."""
     while True:
         print("=" * 65)
-        print(" SISTEMA DE RECONOCIMIENTO DE LENGUA DE SEÑAS PERUANA - ROBOT NAO")
+        print(" SISTEMA DE RECONOCIMIENTO DE LENGUA DE SENAS PERUANA - ROBOT NAO")
         print(" Práctica N.° 2 - Inteligencia Artificial (UPC)")
         print("=" * 65)
-        print("  [1] Capturar datos de señas (MediaPipe Hands Bimanual)")
+        print("  [1] Capturar datos de senas (MediaPipe Hands Bimanual)")
         print("  [2] Unificar datasets individuales de integrantes (data/raw)")
         print("  [3] Entrenar y evaluar modelos ML (SVM vs Random Forest)")
         print("  [4] Ejecutar pruebas automatizadas de integridad y latencia")
+        print("  [5] Probar modelo en tiempo real y capturar evidencias (Webcam)")
+        print("  [6] Iniciar traductor de senas integrado con Robot NAO")
         print("  [0] Salir")
         print("=" * 65)
 
@@ -70,6 +84,10 @@ def mostrar_menu_interactivo() -> None:
             iniciar_entrenamiento_modelos()
         elif opcion == "4":
             ejecutar_pruebas_calidad()
+        elif opcion == "5":
+            iniciar_pruebas_en_vivo()
+        elif opcion == "6":
+            iniciar_traductor_nao()
         elif opcion == "0":
             print("Cerrando el sistema. ¡Hasta pronto!")
             break
@@ -80,12 +98,14 @@ def mostrar_menu_interactivo() -> None:
 def main() -> None:
     """Punto de entrada con soporte para argumentos de línea de comandos."""
     analizador = argparse.ArgumentParser(
-        description="Orquestador del Proyecto de Reconocimiento de Señas (LSP) para el Robot NAO."
+        description="Orquestador del Proyecto de Reconocimiento de Senas (LSP) para el Robot NAO."
     )
-    analizador.add_argument("--capturar", action="store_true", help="Inicia la captura bimanual de señas.")
+    analizador.add_argument("--capturar", action="store_true", help="Inicia la captura bimanual de senas.")
     analizador.add_argument("--unificar", action="store_true", help="Unifica los datasets individuales.")
     analizador.add_argument("--entrenar", action="store_true", help="Ejecuta el entrenamiento y evaluación de modelos.")
     analizador.add_argument("--test", action="store_true", help="Ejecuta las pruebas automatizadas con pytest.")
+    analizador.add_argument("--probar", action="store_true", help="Inicia el banco de pruebas e inferencia en vivo.")
+    analizador.add_argument("--nao", action="store_true", help="Inicia el traductor de senas integrado con Robot NAO.")
 
     argumentos = analizador.parse_args()
 
@@ -97,6 +117,10 @@ def main() -> None:
         iniciar_entrenamiento_modelos()
     elif argumentos.test:
         ejecutar_pruebas_calidad()
+    elif argumentos.probar:
+        iniciar_pruebas_en_vivo()
+    elif argumentos.nao:
+        iniciar_traductor_nao()
     else:
         mostrar_menu_interactivo()
 

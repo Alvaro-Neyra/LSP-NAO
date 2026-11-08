@@ -15,7 +15,7 @@ PROXY=51940    #Port del NAO'''
 
 # Local
 IP="127.0.0.1"
-PROXY=54606
+PROXY=56432
 
 #Zyra
 '''IP="192.168.108.90"  #IP Nao

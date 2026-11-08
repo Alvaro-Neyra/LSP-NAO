@@ -100,9 +100,17 @@ Todos los artefactos, datos y reportes generados se encuentran organizados en la
 * **Cuaderno Interactivo en la Nube:** `notebooks/entrenamiento_lsp_colab.ipynb`
 * **Código Fuente Modular:**
   * Captura de señas: `src/vision/capturar_dataset_lsp.py`
+  * Banco de pruebas en vivo y captura de evidencias: `src/vision/probar_modelo_en_vivo.py`
   * Pipeline de datos y ML: `src/pipeline/`
-  * Control y puente con el robot: `src/robot/`
-* **Pruebas Automatizadas:** `tests/` (`test_data_integrity.py` y `test_model_inference.py`)
+  * Control y puente con el robot NAO: `src/robot/`
+    * Servidor socket y control de proxies NAOqi (Python 2.7): `src/robot/bridge_nao_server.py`
+    * Inferencia, máquina de estados y cliente socket (Python 3): `src/robot/app_inferencia_nao.py`
+    * Script de pruebas exploratorias de articulaciones: `src/robot/codlines_nao.py`
+  * Lanzadores directos en raíz: `bridge_nao_server.py` y `app_inferencia_nao.py` (atajos de ejecución rápida hacia `src/robot/`)
+* **Cuadernos Interactivos:**
+  * Entrenamiento comparativo en Colab: `notebooks/entrenamiento_lsp_colab.ipynb`
+  * Banco de pruebas en vivo con cámara WebRTC: `notebooks/banco_pruebas_lsp_colab.ipynb`
+* **Pruebas Automatizadas:** `tests/` (`test_data_integrity.py`, `test_model_inference.py`, `test_nao_integration.py`)
 
 ---
 
@@ -118,7 +126,21 @@ uv run python main.py
 uv run python main.py --capturar   # Iniciar captura con MediaPipe
 uv run python main.py --unificar   # Unificar datasets individuales
 uv run python main.py --entrenar   # Entrenar y evaluar modelos
+uv run python main.py --probar     # Probar modelo en vivo con captura de evidencias
+uv run python main.py --nao        # Iniciar traductor integrado con Robot NAO
 uv run python main.py --test       # Correr suite de pruebas con pytest
+```
+
+### Ejecución de la Integración con Robot NAO (Dos Terminales)
+
+Debido a que el SDK de NAOqi opera en Python 2.7 (32-bit) y la inferencia en Python 3:
+
+```powershell
+# Terminal 1 (Python 2.7): Controlador del Robot (físico o virtual en Choregraphe)
+python bridge_nao_server.py
+
+# Terminal 2 (Python 3): Inferencia y cámara web
+uv run python app_inferencia_nao.py
 ```
 
 ---

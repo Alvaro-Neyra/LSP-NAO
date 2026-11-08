@@ -9,7 +9,7 @@ import pandas as pd
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf")
 
-# Diccionario de clases para Lengua de Señas Peruana (LSP)
+# Diccionario de clases para Lengua de Senas Peruana (LSP)
 CLASES: dict[int, str] = {
     0: "YO",
     1: "TU",
@@ -100,7 +100,7 @@ def cargar_conteo_existente(ruta_csv: str) -> dict[int, int]:
 
 
 def normalizar_puntos_mano(puntos_mano: Any) -> list[float]:
-    """Normaliza las coordenadas relativas a la muñeca y escala invariantemente."""
+    """Normaliza las coordenadas relativas a la muneca y escala invariantemente."""
     punto_base = puntos_mano.landmark[0]
     base_x, base_y, base_z = punto_base.x, punto_base.y, punto_base.z
 
