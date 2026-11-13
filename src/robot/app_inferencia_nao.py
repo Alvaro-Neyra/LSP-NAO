@@ -7,9 +7,11 @@ al servidor de control del robot NAO (Python 2.7 / NAOqi).
 """
 
 from datetime import datetime
+import argparse
 import json
 import os
 import socket
+import struct
 import sys
 import time
 from typing import Any
@@ -39,6 +41,7 @@ RUTA_MODELO_SERIALIZADO = os.path.join(DIRECTORIO_RAIZ, "models", "modelo_lsp_ga
 # Parametros de comunicacion Socket TCP con el puente NAOqi
 HOST_SOCKET_DEFECTO = "127.0.0.1"
 PUERTO_SOCKET_DEFECTO = 50005
+PUERTO_VIDEO_DEFECTO = 50006
 TIMEOUT_SOCKET_SEG = 0.5
 
 # Parametros del Filtro Temporal y FSM
@@ -52,6 +55,100 @@ CONFIANZA_SEGUIMIENTO_MANOS = 0.50
 TOTAL_PUNTOS_POR_MANO = 21
 DIMENSIONES_POR_PUNTO = 3
 TOTAL_VALORES_POR_MANO = TOTAL_PUNTOS_POR_MANO * DIMENSIONES_POR_PUNTO
+
+
+class CapturadorCamaraNao:
+    """Cliente TCP para recibir en tiempo real fotogramas transmitidos desde la camara de NAO."""
+
+    def __init__(self, host: str = HOST_SOCKET_DEFECTO, puerto: int = PUERTO_VIDEO_DEFECTO) -> None:
+        self.host = host
+        self.puerto = puerto
+        self.sock: socket.socket | None = None
+        self.esta_conectado = False
+        self.ultimo_intento = 0.0
+        self.conectar()
+
+    def conectar(self) -> bool:
+        """Establece conexion con el puerto de streaming de video en Python 2.7."""
+        ahora = time.time()
+        if ahora - self.ultimo_intento < 2.0:
+            return False
+        self.ultimo_intento = ahora
+
+        try:
+            self.release()
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.sock.settimeout(3.0)
+            self.sock.connect((self.host, self.puerto))
+            self.esta_conectado = True
+            print(f"[STREAMING VIDEO CONECTADO] Recibiendo vision de NAO desde {self.host}:{self.puerto}")
+            return True
+        except (socket.error, socket.timeout):
+            self.esta_conectado = False
+            self.sock = None
+            return False
+
+    def isOpened(self) -> bool:
+        """Determina si el canal de captura de video esta activo."""
+        return self.esta_conectado
+
+    def read(self) -> tuple[bool, np.ndarray | None]:
+        """Solicita y recibe un fotograma reciente transmitido por NAO."""
+        if not self.esta_conectado or self.sock is None:
+            if not self.conectar():
+                return False, None
+
+        try:
+            # Enviar solicitud de 1 byte ('F') para sincronizacion con cero retardo
+            self.sock.sendall(b"F")
+
+            # Recibir cabecera de 20 bytes: ancho, alto, canales, esp_color, longitud
+            cabecera = self._recibir_exacto(20)
+            if not cabecera:
+                self.esta_conectado = False
+                return False, None
+
+            ancho, alto, canales, esp_color, longitud = struct.unpack("!IIIII", cabecera)
+            datos_raw = self._recibir_exacto(longitud)
+            if not datos_raw:
+                self.esta_conectado = False
+                return False, None
+
+            cuadro = np.frombuffer(datos_raw, dtype=np.uint8).reshape((alto, ancho, canales)).copy()
+
+            # Si el espacio de color de NAOqi es RGB (11), convertir a BGR para OpenCV
+            if esp_color == 11:
+                cuadro = cv2.cvtColor(cuadro, cv2.COLOR_RGB2BGR)
+
+            # Reescalar fotograma si viene en QVGA (320x240) para mantener tamano HUD uniforme
+            if ancho < 640:
+                cuadro = cv2.resize(cuadro, (640, 480), interpolation=cv2.INTER_LINEAR)
+
+            return True, cuadro
+        except (socket.error, socket.timeout):
+            self.esta_conectado = False
+            return False, None
+
+    def _recibir_exacto(self, n_bytes: int) -> bytes | None:
+        """Lee exactamente la cantidad solicitada de bytes del flujo TCP."""
+        bufer = bytearray()
+        while len(bufer) < n_bytes:
+            fragmento = self.sock.recv(min(n_bytes - len(bufer), 65536)) if self.sock else b""
+            if not fragmento:
+                return None
+            bufer.extend(fragmento)
+        return bytes(bufer)
+
+    def release(self) -> None:
+        """Libera el socket TCP de captura de video."""
+        if self.sock:
+            try:
+                self.sock.close()
+            except Exception:
+                pass
+            self.sock = None
+        self.esta_conectado = False
 
 
 class ClienteSocketNao:
@@ -279,7 +376,8 @@ def dibujar_panel_hud(
     oracion_preview: str,
     estado_socket: bool,
     mensaje_notificacion: str,
-    fps: float
+    fps: float,
+    origen_video: str = "WEBCAM LOCAL"
 ) -> None:
     """Renderiza la interfaz semi-transparente de monitoreo y telemetria sobre el video."""
     alto, ancho, _ = fotograma.shape
@@ -301,10 +399,10 @@ def dibujar_panel_hud(
     else:
         color_sena = (150, 150, 150)
 
-    # Linea de estado y FPS
+    # Linea de estado, fuente y FPS
     cv2.putText(
-        fotograma, f"LSP -> ROBOT NAO | FPS: {fps:.0f}",
-        (x1 + 12, y1 + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1
+        fotograma, f"LSP -> NAO | {origen_video} | FPS: {fps:.0f}",
+        (x1 + 12, y1 + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (200, 200, 200), 1
     )
 
     # Sena detectada
@@ -372,6 +470,36 @@ def dibujar_panel_hud(
 
 def main() -> None:
     """Ejecuta el pipeline completo de inferencia, FSM y transmision hacia el robot NAO."""
+    analizador = argparse.ArgumentParser(
+        description="Inferencia LSP en tiempo real e integracion con el Robot Humanoide NAO."
+    )
+    analizador.add_argument(
+        "--usar-camara-nao", action="store_true",
+        help="Utilizar la camara de NAO (streaming desde Python 2.7) en lugar de la webcam."
+    )
+    analizador.add_argument(
+        "--host-video", default=HOST_SOCKET_DEFECTO,
+        help="Host del socket de video transmitido por NAO."
+    )
+    analizador.add_argument(
+        "--puerto-video", type=int, default=PUERTO_VIDEO_DEFECTO,
+        help="Puerto TCP del stream de video de NAO."
+    )
+    analizador.add_argument(
+        "--host-socket", default=HOST_SOCKET_DEFECTO,
+        help="Host del servidor puente de comandos de NAO."
+    )
+    analizador.add_argument(
+        "--puerto-socket", type=int, default=PUERTO_SOCKET_DEFECTO,
+        help="Puerto TCP para envio de tokens y oraciones a NAO."
+    )
+    analizador.add_argument(
+        "--camara-id", type=int, default=0,
+        help="Indice de webcam local de la laptop si no se usa la camara de NAO."
+    )
+
+    argumentos = analizador.parse_args()
+
     print("=" * 72)
     print(" APLICACION DE INFERENCIA LSP Y TRADUCCION CON ROBOT NAO")
     print("=" * 72)
@@ -385,8 +513,8 @@ def main() -> None:
     nombres_clases = paquete["clases"]
     print(f"Modelo cargado: {paquete.get('nombre_modelo', 'SVM')} con {len(nombres_clases)} clases.")
 
-    # Conectar cliente socket con el puente Python 2.7
-    cliente_nao = ClienteSocketNao(HOST_SOCKET_DEFECTO, PUERTO_SOCKET_DEFECTO)
+    # Conectar cliente socket de comandos con el puente Python 2.7
+    cliente_nao = ClienteSocketNao(argumentos.host_socket, argumentos.puerto_socket)
 
     detector_manos = mp.solutions.hands.Hands(
         static_image_mode=False,
@@ -396,10 +524,21 @@ def main() -> None:
     )
     utilidad_dibujo = mp.solutions.drawing_utils
 
-    captura = cv2.VideoCapture(0)
-    if not captura.isOpened():
-        print("Error: No se pudo abrir la camara web.")
-        return
+    if argumentos.usar_camara_nao:
+        etiqueta_fuente = "CAMARA NAO (POV)"
+        print(f"[FUENTE VIDEO] Conectando a la camara de NAO en {argumentos.host_video}:{argumentos.puerto_video}...")
+        captura = CapturadorCamaraNao(host=argumentos.host_video, puerto=argumentos.puerto_video)
+        if not captura.isOpened():
+            print("\n[ERROR CRITICO] No se pudo conectar al stream de video de NAO.")
+            print("Verifique que 'bridge_nao_server.py' este ejecutandose en Python 2.7.")
+            return
+    else:
+        etiqueta_fuente = "WEBCAM LOCAL"
+        print(f"[FUENTE VIDEO] Abriendo webcam local (ID: {argumentos.camara_id})...")
+        captura = cv2.VideoCapture(argumentos.camara_id)
+        if not captura.isOpened():
+            print(f"Error: No se pudo abrir la webcam local {argumentos.camara_id}.")
+            return
 
     # Variables de estado de la Maquina de Estados Finita (FSM)
     bufer_tokens: list[str] = []
@@ -533,7 +672,8 @@ def main() -> None:
                 oracion_preview,
                 cliente_nao.esta_conectado,
                 notificacion_texto,
-                fps
+                fps,
+                origen_video=etiqueta_fuente
             )
 
             cv2.imshow("Traductor de Senas LSP a Voz y Movimiento - Robot NAO", fotograma)
